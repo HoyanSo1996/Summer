@@ -17,5 +17,5 @@ import lombok.NoArgsConstructor;
 public class BeanDefinition {
 
     private String scope;
-    private Class clazz;
+    private Class<?> clazz;
 }

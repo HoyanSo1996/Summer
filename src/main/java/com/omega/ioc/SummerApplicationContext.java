@@ -1,6 +1,7 @@
 package com.omega.ioc;
 
 import com.omega.annotation.*;
+import com.omega.processor.InitializingBean;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.File;
@@ -141,6 +142,17 @@ public class SummerApplicationContext<T> {
                     // todo 按字段名进行匹配
 
                 }
+            }
+
+            // bean 执行 初始化方法
+            /*
+               功能: 创建好 Bean 后, 判断是否需要进行初始化
+               Tips: 这是容器中常用的一种做法, 根据该类是否实现了某个接口, 来判断是否要执行某个业务逻辑, 是java基础的接口编程的实际运用.
+                     例如 Serializable 接口, 是一个标记接口, 用来判断是否需要对类进行序列化
+             */
+            if (instance instanceof InitializingBean) {
+                InitializingBean bean = (InitializingBean) instance;
+                bean.afterPropertiesSet();
             }
 
             return instance;
