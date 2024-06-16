@@ -1,11 +1,10 @@
 package com.omega.ioc;
 
-import com.omega.annotation.Component;
-import com.omega.annotation.ComponentScan;
-import com.omega.annotation.Scope;
+import com.omega.annotation.*;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.Enumeration;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -125,16 +124,33 @@ public class SummerApplicationContext<T> {
     }
 
     public Object createBean(BeanDefinition beanDefinition) {
-        Class<?> beanDefinitionClazz = beanDefinition.getClazz();
+        Class<?> beanClazz = beanDefinition.getClazz();
         try {
-            return beanDefinitionClazz.getDeclaredConstructor().newInstance();
+            Object instance = beanClazz.getDeclaredConstructor().newInstance();
+
+            // 对 bean 进行自动装配
+            for (Field declaredField : beanClazz.getDeclaredFields()) {
+                if (declaredField.isAnnotationPresent(Autowired.class)) {
+                    // 按类型进行装配
+                    Class<?> fieldClazz = declaredField.getType();
+                    Object bean = getBean(fieldClazz);
+                    declaredField.setAccessible(true);
+                    declaredField.set(instance, bean);
+
+                } else if (declaredField.isAnnotationPresent(Resource.class)) {
+                    // todo 按字段名进行匹配
+
+                }
+            }
+
+            return instance;
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     /**
-     * get bean by beanName
+     * get bean by bean name
      */
     public Object getBean(String beanName) {
         if (!beanDefinitionMap.containsKey(beanName)) {
@@ -148,5 +164,20 @@ public class SummerApplicationContext<T> {
             // 多例
             return createBean(beanDefinition);
         }
+    }
+
+    /**
+     * get bean by bean type
+     */
+    private Object getBean(Class<?> clazz) {
+        Enumeration<String> beanDefinitionKeys = beanDefinitionMap.keys();
+        while (beanDefinitionKeys.hasMoreElements()) {
+            String beanName = beanDefinitionKeys.nextElement();
+            BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
+            if (beanDefinition.getClazz() == clazz) {
+                return getBean(beanName);
+            }
+        }
+        return null;
     }
 }

@@ -1,5 +1,6 @@
 package com.omega.component.service;
 
+import com.omega.annotation.Autowired;
 import com.omega.annotation.Component;
 import com.omega.component.dao.UserDAO;
 
@@ -12,5 +13,10 @@ import com.omega.component.dao.UserDAO;
 @Component("userService")
 public class UserService {
 
+    @Autowired
     private UserDAO userDAO;
+
+    public void sayHi() {
+        userDAO.sayHi();
+    }
 }

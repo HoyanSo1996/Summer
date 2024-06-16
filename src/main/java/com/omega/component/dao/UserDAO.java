@@ -12,4 +12,8 @@ import com.omega.annotation.Scope;
 @Component("userDAO")
 @Scope("prototype")
 public class UserDAO {
+
+    public void sayHi() {
+        System.out.println("UserDAO sayHi()~");
+    }
 }
