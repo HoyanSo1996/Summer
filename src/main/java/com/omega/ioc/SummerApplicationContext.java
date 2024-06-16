@@ -1,11 +1,13 @@
 package com.omega.ioc;
 
 import com.omega.annotation.*;
+import com.omega.processor.BeanPostProcessor;
 import com.omega.processor.InitializingBean;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -22,6 +24,7 @@ public class SummerApplicationContext<T> {
 
     private final ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> singletonObjects = new ConcurrentHashMap<>();
+    private final ArrayList<BeanPostProcessor> beanPostProcessorList = new ArrayList<>();
 
 
     public SummerApplicationContext(Class<T> configClass) {
@@ -29,6 +32,15 @@ public class SummerApplicationContext<T> {
         this.configClassLoader = configClass.getClassLoader();
 
         initBeanDefinitionMap();
+
+        // beanPostProcessorList 的初始化可以和 beanDefinitionMap 放在一起
+        initBeanPostProcessorList();
+
+        /*
+           singletonObjects 的初始化和 beanDefinitionMap 的初始化中分开的原因是,
+           bean 在初始化后需要进行 依赖注入、后置处理器 操作, 这些需要所有加了 @component 的
+           bean 初始化完后才能进行.
+         */
         initSingletonObjects();
     }
 
@@ -117,19 +129,49 @@ public class SummerApplicationContext<T> {
             // 获取 beanName
             String beanName = beanDefinitionKeys.nextElement();
             BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
+
+            // 不把 后置处理器的实现类 放入单例池
+            // *******************************
+            if (BeanPostProcessor.class.isAssignableFrom(beanDefinition.getClazz())) {
+                continue;
+            }
+            // *******************************
+
             if ("singleton".equalsIgnoreCase(beanDefinition.getScope())) {
-                Object bean = createBean(beanDefinition);
+                Object bean = createBean(beanDefinition, beanName);
                 singletonObjects.put(beanName, bean);
             }
         }
     }
 
-    public Object createBean(BeanDefinition beanDefinition) {
+    public void initBeanPostProcessorList() {
+        Enumeration<String> beanDefinitionKeys = beanDefinitionMap.keys();
+        while (beanDefinitionKeys.hasMoreElements()) {
+            // 获取 beanName
+            String beanName = beanDefinitionKeys.nextElement();
+            BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
+            Class<?> clazz = beanDefinition.getClazz();
+            // 判断当前 clazz 有无实现 BeanPostProcessor
+            // 这里不能使用 instanceof 来进行判断, 因为 clazz 是个类对象, 不是实例对象. 这里可以把 isAssignableFrom() 当做一个语法
+            if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
+                try {
+                    BeanPostProcessor beanPostProcessor = (BeanPostProcessor) clazz.newInstance();
+                    beanPostProcessorList.add(beanPostProcessor);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+    }
+
+
+    public Object createBean(BeanDefinition beanDefinition, String beanName) {
         Class<?> beanClazz = beanDefinition.getClazz();
         try {
+            // 1. 实例化 Bean
             Object instance = beanClazz.getDeclaredConstructor().newInstance();
 
-            // 对 bean 进行自动装配
+            // 2. 对 bean 进行自动装配
             for (Field declaredField : beanClazz.getDeclaredFields()) {
                 if (declaredField.isAnnotationPresent(Autowired.class)) {
                     // 按类型进行装配
@@ -140,11 +182,20 @@ public class SummerApplicationContext<T> {
 
                 } else if (declaredField.isAnnotationPresent(Resource.class)) {
                     // todo 按字段名进行匹配
-
                 }
             }
 
-            // bean 执行 初始化方法
+            // 3. 在初始化前执行 后置处理器的before方法
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                Object current = beanPostProcessor.postProcessBeforeInitialization(instance, beanName);
+                /* ======= 细节 ======= */
+                if (current != null) {
+                    instance = current;
+                }
+                /* ======= 细节 ======= */
+            }
+
+            // 4. bean 执行 初始化方法
             /*
                功能: 创建好 Bean 后, 判断是否需要进行初始化
                Tips: 这是容器中常用的一种做法, 根据该类是否实现了某个接口, 来判断是否要执行某个业务逻辑, 是java基础的接口编程的实际运用.
@@ -153,6 +204,14 @@ public class SummerApplicationContext<T> {
             if (instance instanceof InitializingBean) {
                 InitializingBean bean = (InitializingBean) instance;
                 bean.afterPropertiesSet();
+            }
+
+            // 5. 在初始化前执行 后置处理器的before方法
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                Object current = beanPostProcessor.postProcessAfterInitialization(instance, beanName);
+                if (current != null) {
+                    instance = current;
+                }
             }
 
             return instance;
@@ -174,7 +233,7 @@ public class SummerApplicationContext<T> {
             return this.singletonObjects.get(beanName);
         } else {
             // 多例
-            return createBean(beanDefinition);
+            return createBean(beanDefinition, beanName);
         }
     }
 
