@@ -1,5 +1,6 @@
 package com.omega;
 
+import com.omega.component.aspect.SmartAnimal;
 import com.omega.component.service.UserService;
 import com.omega.config.SummerConfig;
 import com.omega.ioc.SummerApplicationContext;
@@ -24,8 +25,12 @@ public class Main {
         // System.out.println("userDAO = " + userDAO);
         // System.out.println("userDAO2 = " + userDAO2);
 
-        UserService userService = (UserService) ioc.getBean("userService");
-        userService.sayHi();
-        System.out.println("ok~");
+        // UserService userService = (UserService) ioc.getBean("userService");
+        // userService.sayHi();
+        // System.out.println("ok~");
+
+        SmartAnimal smartDog = (SmartAnimal) ioc.getBean("smartDog");
+        smartDog.getSum(10, 8);
+        smartDog.getSub(10, 8);
     }
 }
